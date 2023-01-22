@@ -36,28 +36,29 @@ Parameters:
 
 Resources:
 
-  SNSTopic: 
+  SNSTopic:
     Type: AWS::SNS::Topic
-    Properties: 
+    Properties:
       TopicName: !Sub "${ResourcePrefix}-sns-topic"
-      KmsMasterKeyId: alias/aws/sns  
+      KmsMasterKeyId: alias/aws/sns
 
-  CustomerManagedKey:
+  KMSKey:
     Type: AWS::KMS::Key
-    Properties: 
-      Description: "CMK for CloudWatch Log Group encryption"
-      Enabled: true
+    Properties:
+      Description: "KMS key to encrypt Cloudwatch Log Group"
+      EnableKeyRotation: true
       KeyPolicy:
         Version: '2012-10-17'
+        Id: key
         Statement:
           - Effect: Allow
             Principal:
-              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
-            Action: 'kms:*'
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
             Resource: '*'
           - Effect: Allow
             Principal:
-              Service: !Sub 'logs.${AWS::Region}.amazonaws.com'
+              Service: !Sub logs.${AWS::Region}.amazonaws.com
             Action:
               - kms:Encrypt*
               - kms:Decrypt*
@@ -67,18 +68,14 @@ Resources:
             Resource: '*'
             Condition:
               ArnEquals:
-                "kms:EncryptionContext:aws:logs:arn": !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ResourcePrefix}-lambda"
-      KeySpec: SYMMETRIC_DEFAULT
-      KeyUsage: ENCRYPT_DECRYPT
-      MultiRegion: false
-      PendingWindowInDays: 30
+                kms:EncryptionContext:aws:logs:arn : !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ResourcePrefix}-lambda
 
   LambdaLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/lambda/${ResourcePrefix}-lambda'
       RetentionInDays: 60
-      KmsKeyId: !GetAtt 'CustomerManagedKey.Arn'
+      KmsKeyId: !GetAtt KMSKey.Arn
 
   LambdaExecutionRole:
     Type: 'AWS::IAM::Role'
@@ -118,7 +115,7 @@ Resources:
   LambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: !Sub "${ResourcePrefix}-lambda" 
+      FunctionName: !Sub "${ResourcePrefix}-lambda"
       Role: !GetAtt LambdaExecutionRole.Arn
       Runtime: python3.9
       Handler: index.lambda_handler
@@ -232,7 +229,7 @@ Resources:
                           ]
                       }
                   )
-              
+
               try:
                   http = urllib3.PoolManager()
                   response = http.request(
@@ -251,12 +248,12 @@ Resources:
               """
               Lambda handler for the Account Closure Notifier function
 
-              This Lambda will send a notification to SNS/Slack when CloudTrail receives an event 
+              This Lambda will send a notification to SNS/Slack when CloudTrail receives an event
               signifying an account closure or an account leaving the organization.
 
               Parameters:
                   event (dict): The Lambda event object
-                  context (dict): The Lambda context object   
+                  context (dict): The Lambda context object
               """
               message_detail = event['detail']
 
@@ -281,7 +278,7 @@ Resources:
     Type: 'AWS::Events::Rule'
     Properties:
       Description: Cloudwatch Event Rule triggered by CloseAccount and RemoveAccountFromOrganization API calls
-      Name: !Sub "${ResourcePrefix}-event-rule" 
+      Name: !Sub "${ResourcePrefix}-event-rule"
       EventPattern:
         source:
           - aws.cloudtrail
